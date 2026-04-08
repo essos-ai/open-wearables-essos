@@ -633,3 +633,27 @@ class EventRecordRepository(
             .with_for_update()
             .first()
         )
+
+    def find_by_external_id(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        source: str,
+        external_id: str,
+    ) -> EventRecord | None:
+        """Return the sleep record for a given provider's native session ID.
+
+        Used to detect re-syncs of the same session so we can UPDATE the
+        existing record rather than merging/accumulating stale data.
+        """
+        return (
+            db_session.query(self.model)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .options(selectinload(self.model.detail))
+            .filter(
+                DataSource.user_id == user_id,
+                DataSource.source == source,
+                self.model.external_id == external_id,
+            )
+            .first()
+        )

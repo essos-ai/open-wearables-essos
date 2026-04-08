@@ -153,8 +153,6 @@ class Whoop247Data(Base247DataTemplate):
         # Extract score data (may be None if not scored yet)
         score = raw_sleep.get("score", {}) or {}
         stage_summary = score.get("stage_summary", {}) or {}
-        import logging as _logging
-        _logging.getLogger(__name__).info("WHOOP stage_summary raw: %s", stage_summary)
 
         # Time conversions: Whoop provides durations in milliseconds
         # Convert to seconds for our schema
@@ -166,17 +164,16 @@ class Whoop247Data(Base247DataTemplate):
         total_rem_ms = stage_summary.get("total_rem_sleep_time_milli", 0)
 
         # Convert milliseconds to seconds.
-        # Use total_sleep_time_milli (Whoop's "hours of sleep") for duration — this matches what
-        # Whoop displays in their app. Fall back to time-in-bed if the sleep field is absent.
-        sleep_seconds = int(total_sleep_ms / 1000) if total_sleep_ms else 0
         time_in_bed_seconds = int(total_in_bed_ms / 1000) if total_in_bed_ms else 0
-        duration_seconds = sleep_seconds or time_in_bed_seconds
         deep_seconds = int(total_slow_wave_ms / 1000) if total_slow_wave_ms else 0
         light_seconds = int(total_light_ms / 1000) if total_light_ms else 0
         rem_seconds = int(total_rem_ms / 1000) if total_rem_ms else 0
         awake_seconds = int(total_awake_ms / 1000) if total_awake_ms else 0
 
-        # If duration is still 0, calculate from timestamps
+        # Actual sleep = light + deep + rem (Whoop's "hours of sleep", excludes awake time in bed).
+        # Fall back to time-in-bed if no stage data, then to wall-clock duration.
+        actual_sleep_seconds = light_seconds + deep_seconds + rem_seconds
+        duration_seconds = actual_sleep_seconds or time_in_bed_seconds
         if duration_seconds == 0 and start_time and end_time:
             try:
                 start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
@@ -294,7 +291,23 @@ class Whoop247Data(Base247DataTemplate):
         )
 
         try:
-            event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
+            # If this exact Whoop session was synced before, UPDATE it in-place rather
+            # than letting create_or_merge_sleep accumulate stage values on top of stale data.
+            whoop_id_str = str(normalized_sleep.get("whoop_sleep_id")) if normalized_sleep.get("whoop_sleep_id") else None
+            existing = (
+                self.event_record_repo.find_by_external_id(db, user_id, self.provider_name, whoop_id_str)
+                if whoop_id_str else None
+            )
+            if existing:
+                existing.duration_seconds = record.duration_seconds
+                db.add(existing)
+                event_record_service.event_record_detail_repo.delete_by_record_id(db, existing.id)
+                event_record_service.event_record_detail_repo.create_and_flush(
+                    db, detail.model_copy(update={"record_id": existing.id}), detail_type="sleep"
+                )
+                db.commit()
+            else:
+                event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
         except Exception as e:
             log_structured(
                 self.logger,
