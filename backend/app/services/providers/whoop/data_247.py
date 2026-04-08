@@ -156,20 +156,25 @@ class Whoop247Data(Base247DataTemplate):
 
         # Time conversions: Whoop provides durations in milliseconds
         # Convert to seconds for our schema
-        total_in_bed_ms = stage_summary.get("total_in_bed_time_milli", 0)
+        total_sleep_ms = stage_summary.get("total_sleep_time_milli", 0)   # actual hours of sleep
+        total_in_bed_ms = stage_summary.get("total_in_bed_time_milli", 0)  # time in bed (includes awake)
         total_awake_ms = stage_summary.get("total_awake_time_milli", 0)
         total_light_ms = stage_summary.get("total_light_sleep_time_milli", 0)
         total_slow_wave_ms = stage_summary.get("total_slow_wave_sleep_time_milli", 0)
         total_rem_ms = stage_summary.get("total_rem_sleep_time_milli", 0)
 
-        # Convert milliseconds to seconds
-        duration_seconds = int(total_in_bed_ms / 1000) if total_in_bed_ms else 0
+        # Convert milliseconds to seconds.
+        # Use total_sleep_time_milli (Whoop's "hours of sleep") for duration — this matches what
+        # Whoop displays in their app. Fall back to time-in-bed if the sleep field is absent.
+        sleep_seconds = int(total_sleep_ms / 1000) if total_sleep_ms else 0
+        time_in_bed_seconds = int(total_in_bed_ms / 1000) if total_in_bed_ms else 0
+        duration_seconds = sleep_seconds or time_in_bed_seconds
         deep_seconds = int(total_slow_wave_ms / 1000) if total_slow_wave_ms else 0
         light_seconds = int(total_light_ms / 1000) if total_light_ms else 0
         rem_seconds = int(total_rem_ms / 1000) if total_rem_ms else 0
         awake_seconds = int(total_awake_ms / 1000) if total_awake_ms else 0
 
-        # If duration is 0 but we have start/end times, calculate from timestamps
+        # If duration is still 0, calculate from timestamps
         if duration_seconds == 0 and start_time and end_time:
             try:
                 start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
