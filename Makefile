@@ -48,3 +48,6 @@ downgrade:  ## Revert the last migration
 
 reset_db:  ## Truncate all tables in the database (WARNING: deletes all data)
 	$(DOCKER_EXEC) uv run python scripts/reset_database.py
+
+deploy:  ## Build, push to ECR, and restart pods. Use 'make deploy ENV=P' for prod.
+	./backend/scripts/deploy.sh
