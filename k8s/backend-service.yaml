@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: open-wearables
+spec:
+  # Internal only — OAuth callbacks are proxied through the Java patient backend.
+  # Access via: http://backend.open-wearables.svc.cluster.local:8000
+  type: ClusterIP
+  selector:
+    app: backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP

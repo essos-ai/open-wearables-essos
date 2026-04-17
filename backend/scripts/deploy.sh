@@ -61,6 +61,12 @@ kubectl config use-context "${K8S_CLUSTER}"
 echo "==> Ensuring open-wearables namespace exists..."
 kubectl create namespace open-wearables --dry-run=client -o yaml | kubectl apply -f -
 
+echo "==> Syncing secrets from Secrets Manager..."
+ENV="${ENV}" "${K8S_DIR}/create-secret.sh"
+
+echo "==> Applying Service..."
+kubectl apply -f "${K8S_DIR}/backend-service.yaml"
+
 echo "==> Applying manifests..."
 for template in \
   backend-deployment.template.yaml \
