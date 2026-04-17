@@ -58,6 +58,9 @@ docker push "${IMAGE}"
 echo "==> Switching kubectl context to ${K8S_CLUSTER}..."
 kubectl config use-context "${K8S_CLUSTER}"
 
+echo "==> Ensuring open-wearables namespace exists..."
+kubectl create namespace open-wearables --dry-run=client -o yaml | kubectl apply -f -
+
 echo "==> Applying manifests..."
 for template in \
   backend-deployment.template.yaml \
@@ -67,13 +70,8 @@ for template in \
   ACCOUNT_ID="${ACCOUNT_ID}" \
   AWS_REGION="${AWS_REGION}" \
   DEPLOY_TAG="${DEPLOY_TAG}" \
-    envsubst < "${K8S_DIR}/${template}" | kubectl apply -f -
+    envsubst '${ACCOUNT_ID} ${AWS_REGION} ${DEPLOY_TAG}' < "${K8S_DIR}/${template}" | kubectl apply -f -
 done
-
-echo "==> Restarting deployments..."
-kubectl rollout restart deployment/backend -n open-wearables
-kubectl rollout restart deployment/celery-worker -n open-wearables
-kubectl rollout restart deployment/celery-beat -n open-wearables
 
 echo "==> Waiting for backend rollout..."
 kubectl rollout status deployment/backend -n open-wearables --timeout=120s
